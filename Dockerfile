@@ -13,11 +13,13 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip and install required packages in one step to optimize layers
+RUN pip install --upgrade pip \
+    && pip install --prefer-binary --timeout=120 -r requirements.txt
+
 
 # Make port 8501 available to the world outside this container
 EXPOSE 8501
 
 # Run Streamlit when the container launches
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "src/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
