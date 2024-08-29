@@ -21,7 +21,22 @@ load_dotenv()
 API_KEY = os.getenv("GROQ_API_KEY")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+
 # Function to scrape data from URLs
+"""
+Function to scrape data from a list of URLs.
+
+This function takes a list of URLs, sends HTTP GET requests to each URL, and retrieves the HTML content. 
+It then parses the HTML content using BeautifulSoup to extract the text. If the extracted text is substantial 
+(more than 500 characters), it creates a Document object with the text and the URL as metadata and adds it to 
+a list of documents. If the content is too short or the request fails, it prints an appropriate message.
+
+Args:
+    urls (list): A list of URLs to scrape data from.
+
+Returns:
+    list: A list of Document objects containing the scraped text and metadata.
+"""
 def scrape_data_from_urls(urls):
     documents = []
     for url in urls:
@@ -58,16 +73,21 @@ def prepare_vector_store(documents):
 # Initialize the language model with Groq API
 llm = ChatGroq(temperature=0, groq_api_key=API_KEY, model_name="llama3-70b-8192")
 
+
+
+
 # List of URLs to scrape data from
-urls = [
-    'https://www.khaadi.com/',
-    'https://pk.sapphireonline.pk/',
-    'https://generation.com.pk/',
-    'https://myrangja.com/collections/new-arrivals'
-]
+def get_urls():
+    return [
+        'https://www.khaadi.com/',
+        'https://pk.sapphireonline.pk/',
+        'https://generation.com.pk/',
+        'https://myrangja.com/collections/new-arrivals'
+    ]
+
 
 # Scrape and prepare documents
-documents = scrape_data_from_urls(urls)
+documents = scrape_data_from_urls(get_urls())
 print("Scraped Documents:")
 for doc in documents[:5]:  # Print the first 5 documents
     print(f"Source: {doc.metadata['source']}, Content: {doc.page_content[:200]}")  # Print source and first 200 characters
