@@ -1,71 +1,50 @@
 # PakFashion
-This is rag based chatbot which scrap data from different pakistani brands and show it on user requirements.
-## URL Finder
+## Overview
 
-This project is a URL Finder that scrapes data from different Pakistani women clothing brands and saves the URLs to a file. It uses Selenium to automate the web browsing and scraping process.
+The **Fashion Brand Query Bot** is a Streamlit application that allows users to search and explore fashion items from brands like Khaadi, Sapphire, Generation, and Rang Ja. Users can ask the bot questions about various fashion items, and the bot will respond with relevant details.
 
-### Features
+## Features
 
-- Searches for Pakistani women clothing brands using multiple search engines.
-- Scrapes URLs from the search results.
-- Filters out unwanted URLs (e.g., social media, search engines).
-- Saves the found URLs to a file (`urls.txt`).
-- Runs periodically to keep the list of URLs updated.
+- Search for fashion items by color, type, or brand.
+- Display detailed information about each item, including price and description.
+- Visual display of the item images within the Streamlit app.
+- Easy-to-use interface powered by Streamlit.
 
-### Requirements
-
-- Python 3.x
-- Selenium
-- WebDriver Manager
-- dotenv
-
-### Installation
+## Installation
 
 1. Clone the repository:
-    ```sh
-    git clone https://github.com/yourusername/url-finder.git
-    cd url-finder
+    ```bash
+    git clone git@github.com:The-Hexaa/PakFashion.git 
     ```
 
-2. Install the required packages:
-    ```sh
+2. Navigate to the project directory:
+    ```bash
+    cd PakFashion
+    ```
+
+3. Set up a virtual environment (optional but recommended):
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    ```
+
+4. Install the required dependencies:
+    ```bash
     pip install -r requirements.txt
     ```
 
-3. Create a `.env` file in the root directory and add your environment variables:
-    ```sh
-    cp .env.example .env
+## Usage
+
+1. Run the Streamlit app:
+    ```bash
+    streamlit run app.py
     ```
 
-4. Update the `.env` file with your API key and search query:
-    ```sh
-    GROQ_API_KEY=your_api_key
-    SEARCH_QUERY="pakistani women clothing brands"
-    SEARCH_ENGINES="https://www.google.com/search?q=,https://www.bing.com/search?q=,https://search.yahoo.com/search?p=,https://duckduckgo.com/?q="
-    ```
+2. The application will open in your web browser. You can now start querying the bot about fashion items.
 
-### Usage
+## How It Works
 
-1. Run the URL Finder:
-    ```sh
-    python urls_finder.py
-    ```
+- The bot fetches data from a catalog of fashion items.
+- You can type queries like "Show me blue dresses" or "Find embroidered shirts from Khaadi."
+- The bot will display a list of items matching your query, including pictures and detailed descriptions.
 
-2. The script will start searching for Pakistani women clothing brands and save the found URLs to `urls.txt`.
-
-### File Structure
-
-- `urls_finder.py`: Main script that performs the URL finding and scraping.
-- `urls.txt`: File where the found URLs are saved.
-- `.env`: Environment variables file.
-- `.env.example`: Example environment variables file.
-
-### License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-### Acknowledgements
-
-- [Selenium](https://www.selenium.dev/)
-- [WebDriver Manager](https://github.com/SergeyPirogov/webdriver_manager)
-- [dotenv](https://github.com/theskumar/python-dotenv)
