@@ -120,9 +120,22 @@ class FashionBot:
             print(f"An error occurred: {e}")
             return "Sorry, I couldn't generate a response at the moment."
 
-# Initialize the bot and start data fetching
+
+
+
+# Get the interval from the .env file
+interval = int(os.getenv('DATAFETCH_INTERVAL', 3600))  # Default to 3600 seconds if not set
+
+# Initialize the bot
 fashion_bot = FashionBot()
-asyncio.run(fashion_bot.initialize_data())
+
+async def periodic_data_fetching(interval):
+    while True:
+        await fashion_bot.initialize_data()
+        await asyncio.sleep(interval)
+
+# Run the periodic data fetching every x seconds
+asyncio.run(periodic_data_fetching(interval))
 
 # Expose the fashion_bot instance
 def get_fashion_bot():
