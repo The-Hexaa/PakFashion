@@ -25,6 +25,8 @@ class URLFinder:
         self.options.add_argument("--disable-gpu")
         self.options.add_argument("--no-sandbox")
         self.options.add_argument("--disable-dev-shm-usage")
+        # Disable ChromeDriver logs
+        self.options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
         # Load environment variables from .env file
         load_dotenv()

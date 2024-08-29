@@ -2,23 +2,42 @@ import streamlit as st
 from main import get_fashion_bot
 import threading
 from urls_finder import URLFinder
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    filename='fashion_bot_app.log',
+                    filemode='a')
+
+# Create a console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+
+# Add console handler to the root logger
+logging.getLogger('').addHandler(console_handler)
+
+logger = logging.getLogger(__name__)
 
 # Get the FashionBot instance
 fashion_bot = get_fashion_bot()
+logger.info("FashionBot instance created")
 
 def start_url_finder():
     url_finder = URLFinder()
     url_finder.start_search()
+    logger.info("URL Finder started")
 
 def initialize_url_finder():
     url_finder_thread = threading.Thread(target=start_url_finder)
     url_finder_thread.daemon = True
     url_finder_thread.start()
+    logger.info("URL Finder thread initialized")
 
 # Initialize the URLFinder
 initialize_url_finder()
-
-
 
 # Streamlit app configuration
 st.set_page_config(
@@ -26,6 +45,7 @@ st.set_page_config(
     page_icon="🛍️",
     layout="wide"
 )
+logger.info("Streamlit page configured")
 
 # Streamlit App Header
 st.title("Fashion Brand Query Bot")
@@ -37,13 +57,16 @@ user_input = st.chat_input("Type your question here...")
 # Display conversation history
 if "conversation" not in st.session_state:
     st.session_state["conversation"] = []
+    logger.debug("Conversation history initialized")
 
 # Handle user input and generate response
 if user_input:
+    logger.info(f"Received user input: {user_input}")
     st.session_state.conversation.append({"role": "user", "content": user_input})
     with st.spinner("Generating response..."):
         response = fashion_bot.get_response(user_input)
     st.session_state.conversation.append({"role": "bot", "content": response})
+    logger.info("Response generated and added to conversation")
 
 # Display the conversation
 for message in st.session_state.conversation:
@@ -55,7 +78,9 @@ for message in st.session_state.conversation:
         if "images" in message["content"]:
             for img_url in message["content"]["images"]:
                 st.image(img_url, use_column_width=True)  # Display the image
+                logger.debug(f"Image displayed: {img_url}")
 
 # Clear chat history button
 if st.button("Clear Chat History"):
     st.session_state["conversation"] = []
+    logger.info("Chat history cleared")
