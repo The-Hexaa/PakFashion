@@ -18,6 +18,24 @@ from langchain.prompts import (
 from dotenv import load_dotenv
 import threading
 import time
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    filename='fashion_bot.log',
+                    filemode='w')
+
+# Create a console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+
+# Add console handler to the root logger
+logging.getLogger('').addHandler(console_handler)
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -36,15 +54,18 @@ class FashionBot:
         self.data_fetching = False
         self.first_fetch = True
         self.fetch_interval = 3600  # 1 hour in seconds
+        logger.info("FashionBot initialized")
 
     async def scrape_data_from_urls(self, urls):
         self.data_fetching = True
+        logger.info("Starting data scraping")
         async with aiohttp.ClientSession() as session:
             tasks = [self.fetch_content(session, url) for url in urls]
             await asyncio.gather(*tasks)
         self.prepare_vector_store()
         self.data_fetching = False
         self.first_fetch = False
+        logger.info("Data scraping completed")
 
     async def fetch_content(self, session, url):
         try:
@@ -55,14 +76,16 @@ class FashionBot:
                     content = soup.get_text(separator=' ', strip=True)
                     if len(content) > 500:
                         self.documents.append(Document(page_content=content, metadata={"source": url}))
+                        logger.debug(f"Content fetched from {url}")
                     else:
-                        print(f"Content from {url} is too short to be useful.")
+                        logger.warning(f"Content from {url} is too short to be useful.")
                 else:
-                    print(f"Failed to retrieve content from {url}, status code: {response.status}")
+                    logger.error(f"Failed to retrieve content from {url}, status code: {response.status}")
         except Exception as e:
-            print(f"An error occurred while fetching {url}: {e}")
+            logger.exception(f"An error occurred while fetching {url}: {e}")
 
     def prepare_vector_store(self):
+        logger.info("Preparing vector store")
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
             model_kwargs={'device': 'cpu'},
@@ -73,14 +96,16 @@ class FashionBot:
         chunks = text_splitter.split_documents(self.documents)
         
         for i, chunk in enumerate(chunks[:5]):
-            print(f"Chunk {i} from {chunk.metadata['source']}:\n{chunk.page_content[:500]}...")
+            logger.debug(f"Chunk {i} from {chunk.metadata['source']}:\n{chunk.page_content[:500]}...")
         
         self.vector_store = Chroma.from_documents(chunks, embeddings)
         self.retriever = self.vector_store.as_retriever(k=20)
         self.setup_conversation_chain()
         self.data_fetching = False
+        logger.info("Vector store prepared")
 
     def setup_conversation_chain(self):
+        logger.info("Setting up conversation chain")
         general_system_template = """
         You are a helpful assistant. When responding to questions, provide the relevant items from all brands, and make sure to clearly mention which brand each item is from.
 
@@ -105,41 +130,52 @@ class FashionBot:
         self.conversation = ConversationalRetrievalChain.from_llm(
             self.llm, retriever=self.retriever, memory=self.memory, combine_docs_chain_kwargs={"prompt": aqa_prompt}, verbose=True
         )
+        logger.info("Conversation chain set up")
 
     def get_urls(self):
+        logger.info("Reading URLs from file")
         with open('urls.txt', 'r') as file:
             urls = file.read().splitlines()
         return urls
 
     async def initialize_data(self):
+        logger.info("Initializing data")
         self.data_fetching = True
         urls = self.get_urls()
         await self.scrape_data_from_urls(urls)
 
     def get_response(self, question, num_results=20):
         if self.data_fetching:
+            logger.warning("Data fetching in progress, unable to respond")
             return "Currently fetching data. Please try again in a few moments."
         elif not self.vector_store:
+            logger.warning("Vector store not available, unable to respond")
             return "Data is not yet available. Please wait a moment and try again."
         self.first_fetch = False  # Reset first_fetch flag after successful data load
         if not self.vector_store:
+            logger.warning("Vector store not available, unable to respond")
             return "Data is not yet available. Please try again in a few moments."
         try:
+            logger.info(f"Generating response for question: {question}")
             self.retriever.search_kwargs['k'] = num_results
             response = self.conversation.run({'question': question})
+            logger.debug(f"Generated response: {response}")
             return response
         except Exception as e:
-            print(f"An error occurred: {e}")
+            logger.exception(f"An error occurred while generating response: {e}")
             return "Sorry, I couldn't generate a response at the moment."
 
     def start_periodic_scraping(self):
         def run_scraping():
             while True:
+                logger.info("Starting periodic scraping")
                 asyncio.run(self.initialize_data())
+                logger.info(f"Sleeping for {self.fetch_interval} seconds before next scrape")
                 time.sleep(self.fetch_interval)
 
         thread = threading.Thread(target=run_scraping, daemon=True)
         thread.start()
+        logger.info("Periodic scraping thread started")
 
 # Initialize the bot and start periodic scraping
 fashion_bot = FashionBot()
