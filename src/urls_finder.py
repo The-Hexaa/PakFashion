@@ -27,6 +27,12 @@ class URLFinder:
         self.options.add_argument("--disable-dev-shm-usage")
         # Disable ChromeDriver logs
         self.options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        # Disable Selenium logging
+        logging.getLogger('selenium').setLevel(logging.CRITICAL)
+        # Disable urllib3 logging
+        logging.getLogger('urllib3').setLevel(logging.CRITICAL)
+        # Disable WebDriver Manager logs
+        logging.getLogger('WDM').setLevel(logging.NOTSET)
 
         # Load environment variables from .env file
         load_dotenv()
@@ -60,7 +66,10 @@ class URLFinder:
     def search_pakistani_women_clothing_brands(self):
         logging.info("Searching for Pakistani women clothing brands.")
         
-        with webdriver.Chrome(options=self.options) as driver:
+        # Use ChromeDriverManager without log_level parameter
+        service = Service(ChromeDriverManager().install())
+        
+        with webdriver.Chrome(options=self.options, service=service) as driver:
             for search_url in self.search_urls:
                 logging.info(f"Sending request to {search_url}")
                 driver.get(search_url)
