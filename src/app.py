@@ -1,5 +1,24 @@
 import streamlit as st
-from main import get_response
+from main import get_fashion_bot
+import threading
+from urls_finder import URLFinder
+
+# Get the FashionBot instance
+fashion_bot = get_fashion_bot()
+
+def start_url_finder():
+    url_finder = URLFinder()
+    url_finder.start_search()
+
+def initialize_url_finder():
+    url_finder_thread = threading.Thread(target=start_url_finder)
+    url_finder_thread.daemon = True
+    url_finder_thread.start()
+
+# Initialize the URLFinder
+initialize_url_finder()
+
+
 
 # Streamlit app configuration
 st.set_page_config(
@@ -23,7 +42,7 @@ if "conversation" not in st.session_state:
 if user_input:
     st.session_state.conversation.append({"role": "user", "content": user_input})
     with st.spinner("Generating response..."):
-        response = get_response(user_input)
+        response = fashion_bot.get_response(user_input)
     st.session_state.conversation.append({"role": "bot", "content": response})
 
 # Display the conversation
