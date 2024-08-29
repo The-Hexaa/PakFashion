@@ -5,4 +5,5 @@
 *.pyc
 src/__pycache__/main.cpython-312.pyc
 urls.txt
-
+*.log
+urls.txt
