@@ -3,7 +3,7 @@ import requests
 import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_ollama import OllamaEmbeddings
 from langchain.vectorstores import Chroma
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -86,12 +86,16 @@ class FashionBot:
 
     def prepare_vector_store(self):
         logger.info("Preparing vector store")
-        embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': False}
+        # embeddings = HuggingFaceEmbeddings(
+        #     model_name="sentence-transformers/all-MiniLM-L6-v2",
+        #     model_kwargs={'device': 'cpu'},
+        #     encode_kwargs={'normalize_embeddings': False}
+        # )
+        embeddings = OllamaEmbeddings(
+            base_url=os.getenv("OLLAMA_URL"),
+            model="mxbai-embed-large"
         )
-        
+                        
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=128)
         chunks = text_splitter.split_documents(self.documents)
         

@@ -1,10 +1,11 @@
-langchain
 langchain-community
 langchain-groq
 chromadb
-sentence-transformers
+
 streamlit
 beautifulsoup4
 selenium
 watchdog
+langchain-ollama
+webdriver_manager
 
