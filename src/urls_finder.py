@@ -6,7 +6,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
-# from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.chrome import ChromeDriverManager
 import time
 import re
 from urllib.parse import urlparse
@@ -19,6 +19,8 @@ class URLFinder:
     def __init__(self):
         # Configure logging
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        # Load environment variables from .env file
+        load_dotenv()
         # Configure headless browser
         self.options = Options()
         self.options.add_argument("--headless")
@@ -34,8 +36,7 @@ class URLFinder:
         # Disable WebDriver Manager logs
         logging.getLogger('WDM').setLevel(logging.NOTSET)
 
-        # Load environment variables from .env file
-        load_dotenv()
+
 
         # Retrieve search query and search engines from environment variables
         self.search_query = os.getenv("SEARCH_QUERY", "pakistani women clothing brands").replace(" ", "+")
@@ -69,11 +70,14 @@ class URLFinder:
         # Use ChromeDriverManager without log_level parameter
         service = Service(ChromeDriverManager().install())
         
+        # Get the number of pages to search from .env, default to 5 if not specified
+        pages_to_search = int(os.getenv("PAGES_TO_SEARCH", "5"))
+        
         with webdriver.Chrome(options=self.options, service=service) as driver:
             for search_url in self.search_urls:
                 logging.info(f"Sending request to {search_url}")
                 driver.get(search_url)
-                for page in range(1, 6):  # Fetch first 5 pages
+                for page in range(1, pages_to_search + 1):
                     try:
                         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "a")))
                         links = driver.find_elements(By.TAG_NAME, "a")
@@ -85,15 +89,22 @@ class URLFinder:
                                 if main_domain not in self.seen_urls and all(excluded not in main_domain for excluded in ["bingplaces.com", "youtube.com", "google.com", "bing.com", "microsoft.com", "facebook.com", "instagram.com", "twitter.com", "yahoo.com", "duckduckgo.com"]):
                                     self.seen_urls.add(main_domain)
                                     logging.info(f"Found URL {main_domain}")
-                        next_button = driver.find_element(By.XPATH, "//a[@aria-label='Next']")  # Adjust the XPath as needed for different search engines
-                        if next_button:
-                            next_button.click()
+                        
+                        if page < pages_to_search:
+                            try:
+                                next_button = WebDriverWait(driver, 10).until(
+                                    EC.element_to_be_clickable((By.XPATH, "//a[@aria-label='Next']"))
+                                )
+                                next_button.click()
+                                time.sleep(2)  # Wait for the page to load
+                            except Exception as e:
+                                logging.warning(f"Failed to navigate to next page: {e}")
+                                break
                         else:
-                            break
+                            logging.info(f"Reached the configured number of pages ({pages_to_search}) for {search_url}")
                     except Exception as e:
                         logging.warning(f"Failed to retrieve content from {search_url} page {page}: {e}")
                         break
-        
         with open("urls.txt", "w") as file:
             for url in self.seen_urls:
                 file.write(f"{url}\n")
