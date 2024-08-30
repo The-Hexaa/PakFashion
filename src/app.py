@@ -49,7 +49,7 @@ logger.info("Streamlit page configured")
 
 # Streamlit App Header
 st.title("Fashion Brand Query Bot")
-st.write("Ask me about different fashion items from Khaadi, Sapphire, Generation, and Rangja!")
+st.write("Ask me about different fashion items from brands")
 
 # User input section
 user_input = st.chat_input("Type your question here...")

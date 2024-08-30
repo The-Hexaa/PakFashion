@@ -106,20 +106,25 @@ class FashionBot:
 
     def setup_conversation_chain(self):
         logger.info("Setting up conversation chain")
-        general_system_template = """
-        You are a helpful assistant. When responding to questions, provide the relevant items from all brands, and make sure to clearly mention which brand each item is from.
 
-        ----
-        chat history = {chat_history}
-        ----
-        context = {context}
-        ----
-        human question =  {question}
-        ----
-        Provide results, specifying the brand for each item (e.g., "This item is from Sapphire").
+        general_system_template = """
+        You are a helpful assistant with extensive knowledge about fashion brands and products. Your responses should:
+        1. Provide accurate and relevant information based on the context provided.
+        2. Mention the specific brand for each item when referring to products.
+        3. Ensure clarity and comprehensiveness in your responses.
+
+        Here's some information about the context and user queries:
+        - Chat history: {chat_history}
+        - Context: {context}
+        - User's question: {question}
+
+        Use the context to enhance the response and refer to the brands explicitly. Ensure that your answers are relevant and useful.
         """
 
-        general_user_template = "Question:```{question}```"
+        general_user_template = """
+        The user is asking:
+        Question: ```{question}```
+        """
 
         messages = [
             SystemMessagePromptTemplate.from_template(general_system_template),
