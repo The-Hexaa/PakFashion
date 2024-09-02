@@ -67,18 +67,44 @@ class FashionBot:
         self.first_fetch = False
         logger.info("Data scraping completed")
 
+
+        
+
     async def fetch_content(self, session, url):
         try:
             async with session.get(url) as response:
                 if response.status == 200:
                     text = await response.text()
                     soup = BeautifulSoup(text, 'html.parser')
-                    content = soup.get_text(separator=' ', strip=True)
-                    if len(content) > 500:
-                        self.documents.append(Document(page_content=content, metadata={"source": url}))
-                        logger.debug(f"Content fetched from {url}")
-                    else:
-                        logger.warning(f"Content from {url} is too short to be useful.")
+
+                    # Extract product details
+                    products = []
+
+                    # Example of how you might extract product details - adjust based on the actual HTML structure
+                    product_elements = soup.find_all('div', class_='product')  # Adjust the selector based on the website
+
+                    for product in product_elements:
+                        product_name = product.find('h2', class_='product-name').text.strip() if product.find('h2', class_='product-name') else 'No Name'
+                        product_image = product.find('img', class_='product-image')['src'] if product.find('img', class_='product-image') else 'No Image URL'
+                        product_price = product.find('span', class_='price').text.strip() if product.find('span', class_='price') else 'No Price'
+                        product_code = product.find('span', class_='product-code').text.strip() if product.find('span', class_='product-code') else 'No Code'
+
+                        products.append({
+                            "name": product_name,
+                            "image_url": product_image,
+                            "price": product_price,
+                            "code": product_code,
+                            "source": url
+                        })
+
+                    # Add each product as a document
+                    for product in products:
+                        self.documents.append(Document(
+                            page_content=f"Product: {product['name']}\nPrice: {product['price']}\nCode: {product['code']}\nImage URL: {product['image_url']}",
+                            metadata={"source": url, "image_url": product['image_url']}
+                        ))
+                        logger.debug(f"Extracted product details from {url}: {product}")
+
                 else:
                     logger.error(f"Failed to retrieve content from {url}, status code: {response.status}")
         except Exception as e:
@@ -114,15 +140,25 @@ class FashionBot:
         general_system_template = """
         You are a helpful assistant with extensive knowledge about fashion brands and products. Your responses should:
         1. Provide accurate and relevant information based on the context provided.
-        2. Mention the specific brand for each item when referring to products.
+        2. Mention the specific brand, color, fabric, and size for each item when referring to products.
         3. Ensure clarity and comprehensiveness in your responses.
+        4. Filter the results, including images, based on the user's specified criteria such as brand, color, fabric, size, or other attributes mentioned in their query.
+        5. Scrape the web to find the exact image URLs that match the filtered criteria and include them in your response in PNG format.
+
+        Here's how to handle user queries:
+        - Parse the user's question to identify filtering criteria (e.g., brand, color, fabric, size).
+        - Use a scraping function to search for images that match the specified criteria.
+        - Retrieve and list the fashion items, along with the exact image URLs, that match the user's query.
+        - Ensure that the images provided correspond to the filtered products based on the user's criteria.
+        - If no exact matches are found, suggest similar items or inform the user accordingly.
+        - Always refer to the specific brand for each product mentioned in your response.
 
         Here's some information about the context and user queries:
         - Chat history: {chat_history}
         - Context: {context}
         - User's question: {question}
 
-        Use the context to enhance the response and refer to the brands explicitly. Ensure that your answers are relevant and useful.
+        Use the context to enhance the response and refer to the brands explicitly. Ensure that your answers are relevant, filtered according to the user's query, and useful. Use the correct and verified image URLs that match the user's filtering criteria.
         """
 
         general_user_template = """
