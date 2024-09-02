@@ -74,11 +74,15 @@ for message in st.session_state.conversation:
         st.chat_message("user").write(message["content"])
     else:
         st.chat_message("assistant").write(message["content"])
-        # Check for images or additional information in the response
-        if "images" in message["content"]:
+        
+        # Ensure message["content"] is a dictionary and contains "images"
+        if isinstance(message["content"], dict) and "images" in message["content"]:
             for img_url in message["content"]["images"]:
                 st.image(img_url, use_column_width=True)  # Display the image
                 logger.debug(f"Image displayed: {img_url}")
+        else:
+            logger.warning(f"No images found or content is not a dictionary: {message['content']}")
+
 
 # Clear chat history button
 if st.button("Clear Chat History"):
