@@ -1,10 +1,10 @@
 version: '3.8'
 
 services:
-  rag-chatbot:
+  pak-fashion:
     build: .
     ports:
-      - "8501:8501"
+      - "8502:8505"
     volumes:
       - .:/app
     environment:

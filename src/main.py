@@ -4,6 +4,7 @@ import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
 from langchain_ollama import OllamaEmbeddings
+from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import Chroma
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -26,20 +27,16 @@ logging.basicConfig(level=logging.DEBUG,
                     filename='fashion_bot.log',
                     filemode='w')
 
-# Create a console handler
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 console_handler.setFormatter(formatter)
-
-# Add console handler to the root logger
 logging.getLogger('').addHandler(console_handler)
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-# Load API Key
 API_KEY = os.getenv("GROQ_API_KEY")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -56,6 +53,12 @@ class FashionBot:
         self.fetch_interval = 3600  # 1 hour in seconds
         logger.info("FashionBot initialized")
 
+    def get_urls(self):
+        logger.info("Reading URLs from file")
+        with open('urls.txt', 'r') as file:
+            urls = file.read().splitlines()
+        return urls
+
     async def scrape_data_from_urls(self, urls):
         self.data_fetching = True
         logger.info("Starting data scraping")
@@ -67,9 +70,6 @@ class FashionBot:
         self.first_fetch = False
         logger.info("Data scraping completed")
 
-
-        
-
     async def fetch_content(self, session, url):
         try:
             async with session.get(url) as response:
@@ -77,34 +77,18 @@ class FashionBot:
                     text = await response.text()
                     soup = BeautifulSoup(text, 'html.parser')
 
-                    # Extract product details
-                    products = []
+                    # Extracting text content
+                    content = soup.get_text(separator=' ', strip=True)
 
-                    # Example of how you might extract product details - adjust based on the actual HTML structure
-                    product_elements = soup.find_all('div', class_='product')  # Adjust the selector based on the website
+                    # Extracting image URLs
+                    images = [img['src'] for img in soup.find_all('img') if img.get('src')]
+                    image_urls = ", ".join(images)
 
-                    for product in product_elements:
-                        product_name = product.find('h2', class_='product-name').text.strip() if product.find('h2', class_='product-name') else 'No Name'
-                        product_image = product.find('img', class_='product-image')['src'] if product.find('img', class_='product-image') else 'No Image URL'
-                        product_price = product.find('span', class_='price').text.strip() if product.find('span', class_='price') else 'No Price'
-                        product_code = product.find('span', class_='product-code').text.strip() if product.find('span', class_='product-code') else 'No Code'
-
-                        products.append({
-                            "name": product_name,
-                            "image_url": product_image,
-                            "price": product_price,
-                            "code": product_code,
-                            "source": url
-                        })
-
-                    # Add each product as a document
-                    for product in products:
-                        self.documents.append(Document(
-                            page_content=f"Product: {product['name']}\nPrice: {product['price']}\nCode: {product['code']}\nImage URL: {product['image_url']}",
-                            metadata={"source": url, "image_url": product['image_url']}
-                        ))
-                        logger.debug(f"Extracted product details from {url}: {product}")
-
+                    if len(content) > 500:
+                        self.documents.append(Document(page_content=content, metadata={"source": url, "image_urls": image_urls}))
+                        logger.debug(f"Content and images fetched from {url}")
+                    else:
+                        logger.warning(f"Content from {url} is too short to be useful.")
                 else:
                     logger.error(f"Failed to retrieve content from {url}, status code: {response.status}")
         except Exception as e:
@@ -112,22 +96,17 @@ class FashionBot:
 
     def prepare_vector_store(self):
         logger.info("Preparing vector store")
-        # embeddings = HuggingFaceEmbeddings(
-        #     model_name="sentence-transformers/all-MiniLM-L6-v2",
-        #     model_kwargs={'device': 'cpu'},
-        #     encode_kwargs={'normalize_embeddings': False}
-        # )
-        embeddings = OllamaEmbeddings(
-            base_url=os.getenv("OLLAMA_URL"),
-            model="mxbai-embed-large"
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': False}
         )
-                        
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=128)
         chunks = text_splitter.split_documents(self.documents)
-        
+
         for i, chunk in enumerate(chunks[:5]):
             logger.debug(f"Chunk {i} from {chunk.metadata['source']}:\n{chunk.page_content[:500]}...")
-        
+
         self.vector_store = Chroma.from_documents(chunks, embeddings)
         self.retriever = self.vector_store.as_retriever(k=20)
         self.setup_conversation_chain()
@@ -140,30 +119,22 @@ class FashionBot:
         general_system_template = """
         You are a helpful assistant with extensive knowledge about fashion brands and products. Your responses should:
         1. Provide accurate and relevant information based on the context provided.
-        2. Mention the specific brand, color, fabric, and size for each item when referring to products.
+        2. Mention the specific brand for each item when referring to products.
         3. Ensure clarity and comprehensiveness in your responses.
-        4. Filter the results, including images, based on the user's specified criteria such as brand, color, fabric, size, or other attributes mentioned in their query.
-        5. Scrape the web to find the exact image URLs that match the filtered criteria and include them in your response in PNG format.
-
-        Here's how to handle user queries:
-        - Parse the user's question to identify filtering criteria (e.g., brand, color, fabric, size).
-        - Use a scraping function to search for images that match the specified criteria.
-        - Retrieve and list the fashion items, along with the exact image URLs, that match the user's query.
-        - Ensure that the images provided correspond to the filtered products based on the user's criteria.
-        - If no exact matches are found, suggest similar items or inform the user accordingly.
-        - Always refer to the specific brand for each product mentioned in your response.
+        4. Include image URLs where relevant and available.
 
         Here's some information about the context and user queries:
         - Chat history: {chat_history}
         - Context: {context}
         - User's question: {question}
 
-        Use the context to enhance the response and refer to the brands explicitly. Ensure that your answers are relevant, filtered according to the user's query, and useful. Use the correct and verified image URLs that match the user's filtering criteria.
+        Use the context to enhance the response and refer to the brands explicitly. If image URLs are available for the items, include them in the response. Ensure that your answers are relevant and useful.
         """
 
         general_user_template = """
         The user is asking:
         Question: ```{question}```
+        If there are any images related to this question, include their URLs in the response.
         """
 
         messages = [
@@ -176,12 +147,6 @@ class FashionBot:
             self.llm, retriever=self.retriever, memory=self.memory, combine_docs_chain_kwargs={"prompt": aqa_prompt}, verbose=True
         )
         logger.info("Conversation chain set up")
-
-    def get_urls(self):
-        logger.info("Reading URLs from file")
-        with open('urls.txt', 'r') as file:
-            urls = file.read().splitlines()
-        return urls
 
     async def initialize_data(self):
         logger.info("Initializing data")
@@ -196,19 +161,31 @@ class FashionBot:
         elif not self.vector_store:
             logger.warning("Vector store not available, unable to respond")
             return "Data is not yet available. Please wait a moment and try again."
+        
         self.first_fetch = False  # Reset first_fetch flag after successful data load
+        
         if not self.vector_store:
             logger.warning("Vector store not available, unable to respond")
             return "Data is not yet available. Please try again in a few moments."
+        
         try:
             logger.info(f"Generating response for question: {question}")
-            self.retriever.search_kwargs['k'] = num_results
-            response = self.conversation.run({'question': question})
-            logger.debug(f"Generated response: {response}")
-            return response
+            search_results = []
+            
+            # Iterate over each URL in urls.txt and generate search URLs
+            urls = self.get_urls()
+            for url in urls:
+                search_url = f"{url}?q={question.replace(' ', '+')}"
+                search_results.append(f"Check out products at: {search_url}")
+
+            # Return formatted response with URLs
+            formatted_response = "\n".join(search_results)
+            logger.info(f"Response generated for question: {question}")
+            return formatted_response
         except Exception as e:
-            logger.exception(f"An error occurred while generating response: {e}")
-            return "Sorry, I couldn't generate a response at the moment."
+            logger.exception(f"An error occurred while generating the response: {e}")
+            return "An error occurred while processing your request. Please try again later."
+
 
     def start_periodic_scraping(self):
         def run_scraping():
