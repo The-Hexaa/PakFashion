@@ -84,8 +84,12 @@ class FashionBot:
                     images = [img['src'] for img in soup.find_all('img') if img.get('src')]
                     image_urls = ", ".join(images)
 
+                    # Extract product URLs (adjust the selector as needed)
+                    product_links = [a['href'] for a in soup.find_all('a', href=True) if 'product' in a['href']]
+                    product_urls = ", ".join(product_links)
+
                     if len(content) > 500:
-                        self.documents.append(Document(page_content=content, metadata={"source": url, "image_urls": image_urls}))
+                        self.documents.append(Document(page_content=content, metadata={"source": url, "image_urls": image_urls, "product_urls": product_urls}))
                         logger.debug(f"Content and images fetched from {url}")
                     else:
                         logger.warning(f"Content from {url} is too short to be useful.")
@@ -96,10 +100,10 @@ class FashionBot:
 
     def prepare_vector_store(self):
         logger.info("Preparing vector store")
-        embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': False}
+        
+        embeddings = OllamaEmbeddings(
+            base_url=os.getenv("OLLAMA_URL"),
+            model="mxbai-embed-large"
         )
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=128)
         chunks = text_splitter.split_documents(self.documents)
@@ -112,6 +116,7 @@ class FashionBot:
         self.setup_conversation_chain()
         self.data_fetching = False
         logger.info("Vector store prepared")
+
 
     def setup_conversation_chain(self):
         logger.info("Setting up conversation chain")
@@ -154,38 +159,69 @@ class FashionBot:
         urls = self.get_urls()
         await self.scrape_data_from_urls(urls)
 
+    def extract_attributes_with_ai(self, question):
+        # Send the user's query to the model to extract attributes like color and fabric
+        logger.info(f"Extracting attributes from question: {question}")
+        
+        try:
+            # Use the correct method from the ChatGroq API to process the query
+            response = self.llm.generate({
+                "prompt": f"Extract color, fabric, and other attributes from this query: '{question}'"
+            })
+
+            # Process the response to extract attributes
+            extracted_attributes = response.get("text", {}).strip()
+            
+            # Assuming the response is a string of key-value pairs (like "color: red, fabric: cotton")
+            # Convert the response string into a dictionary of attributes
+            attributes_dict = {}
+            for pair in extracted_attributes.split(","):
+                key, value = pair.split(":")
+                attributes_dict[key.strip()] = value.strip()
+            
+            logger.info(f"Extracted attributes: {attributes_dict}")
+            return attributes_dict
+    
+        except Exception as e:
+            logger.exception(f"Error extracting attributes from AI: {e}")
+            return {}
+
+
     def get_response(self, question, num_results=20):
         if self.data_fetching:
             logger.warning("Data fetching in progress, unable to respond")
             return "Currently fetching data. Please try again in a few moments."
+        
         elif not self.vector_store:
             logger.warning("Vector store not available, unable to respond")
             return "Data is not yet available. Please wait a moment and try again."
         
-        self.first_fetch = False  # Reset first_fetch flag after successful data load
-        
-        if not self.vector_store:
-            logger.warning("Vector store not available, unable to respond")
-            return "Data is not yet available. Please try again in a few moments."
-        
         try:
             logger.info(f"Generating response for question: {question}")
-            search_results = []
             
-            # Iterate over each URL in urls.txt and generate search URLs
+            # Extract color, fabric, and other attributes using AI
+            attributes = self.extract_attributes_with_ai(question)
+            color = attributes.get("color", "")
+            fabric = attributes.get("fabric", "")
+            
+            # Iterate over each URL in urls.txt and generate search URLs with extracted attributes
+            search_results = []
             urls = self.get_urls()
+            
             for url in urls:
-                search_url = f"{url}?q={question.replace(' ', '+')}"
+                # Dynamically construct the search query based on attributes
+                search_query = "+".join([color, fabric]) if color or fabric else question
+                search_url = f"{url}/search?q={search_query}" or f"{url}?q={search_query}"
                 search_results.append(f"Check out products at: {search_url}")
-
+            
             # Return formatted response with URLs
             formatted_response = "\n".join(search_results)
             logger.info(f"Response generated for question: {question}")
             return formatted_response
+        
         except Exception as e:
             logger.exception(f"An error occurred while generating the response: {e}")
             return "An error occurred while processing your request. Please try again later."
-
 
     def start_periodic_scraping(self):
         def run_scraping():
