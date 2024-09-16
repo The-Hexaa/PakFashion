@@ -194,7 +194,7 @@ class URLFinder:
         while True:
             self.search_pakistani_women_clothing_brands()
             self.start_scraping()
-            time.sleep(3600)  # Run the search and scrape every hour
+            time.sleep(10)  # Run the search and scrape every hour
 
 
 if __name__ == "__main__":
