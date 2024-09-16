@@ -191,10 +191,11 @@ class URLFinder:
 
     def start_search(self):
         """Continuously runs the search operation at regular intervals"""
-        while True:
-            self.search_pakistani_women_clothing_brands()
-            self.start_scraping()
-            time.sleep(10)  # Run the search and scrape every hour
+        # while True:
+        self.search_pakistani_women_clothing_brands()
+        self.start_scraping()
+        logging.info("test----------------------------------------------")
+        # time.sleep(3600)  # Run the search and scrape every hour
 
 
 if __name__ == "__main__":

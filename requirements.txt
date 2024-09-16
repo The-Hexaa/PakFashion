@@ -8,4 +8,5 @@ selenium
 watchdog
 langchain-ollama
 webdriver_manager
+schedule
 

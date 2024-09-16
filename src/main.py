@@ -3,6 +3,7 @@ import logging
 import time
 import threading
 import requests
+import schedule
 from dotenv import load_dotenv
 from urls_finder import URLFinder  # Import URLFinder from urls_finder.py
 from langchain_community.vectorstores import Chroma  # Updated import for Chroma
@@ -150,7 +151,7 @@ class FashionBot:
         
         if not self.conversation:
             logger.error("Conversation chain not set up yet.")
-            return "Error: Conversation chain is not available."
+            return "Error: Conversation chain is not available. "
 
         try:
             response = self.conversation.run(query)
@@ -158,12 +159,18 @@ class FashionBot:
         except Exception as e:
             logger.error(f"Error during conversation chain execution: {e}")
             return "Error: Failed to process the query."
+        
+    
+    def cronjob_for_scraping(self):
+        scraping_thread = threading.Thread(target=self.start_scraping)
+        scraping_thread.start()
+    
 
     def start(self):
         """Start the bot, scrape data, prepare the vector store, and handle queries."""
         # Use a separate thread for scraping so it doesn't block the main thread.
-        scraping_thread = threading.Thread(target=self.start_scraping())
-        scraping_thread.start()
+        # scraping_thread = threading.Thread(target=self.start_scraping())
+        # scraping_thread.start()
 
         # Wait for the scraping to complete before accepting queries.
         # while scraping_thread.is_alive():
@@ -179,6 +186,34 @@ class FashionBot:
             print(f"Response: {response}")
             time.sleep(1)
 
+def run_scheduler(bot):
+        bot = FashionBot()
+        schedule.every(1).hour.do(bot.cronjob_for_scraping)
+
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
+
+def cronjob_for_scraping():
+        bot = FashionBot()
+        scraping_thread = threading.Thread(target=bot.start_scraping())
+        scraping_thread.start()
+
+
 if __name__ == "__main__":
     bot = FashionBot()
-    bot.start()
+
+    # Run the scraping job immediately at start
+    bot.cronjob_for_scraping()
+
+    # Start the scheduler in a separate thread
+    scheduler_thread = threading.Thread(target=run_scheduler, args=(bot,), daemon=True)
+    scheduler_thread.start()
+
+    # Run the bot's start method in the main thread (since it takes input)
+    try:
+        bot.start()
+    except KeyboardInterrupt:
+        print("Interrupted by user. Exiting...")
+    finally:
+        print("Shutting down...")
