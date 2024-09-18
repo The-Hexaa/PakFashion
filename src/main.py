@@ -60,16 +60,13 @@ class FashionBot:
             logger.error(f"Error fetching embeddings from Groq: {e}")
             return None
         
-    def start_scraping(self, timeout=60, max_docs=100):
+    def start_scraping(self, timeout=60):
         """Starts scraping using URLFinder and stores data in the vector store."""
         logger.info("Starting URL scraping using URLFinder...")
 
-        documents = []
         try:
             start_time = time.time()
             documents = self.url_finder.start_search()
-            logging.info("Documents information")
-            logger.info(documents)
             if not documents:
                 logger.warning("No documents found to scrape.")
             else:
@@ -81,10 +78,34 @@ class FashionBot:
         except Exception as e:
             logger.exception("Failed during the URL search process.")
 
-        # Ensure update_vector_store is still called, even if the search fails
-        logger.debug("Calling update_vector_store with the results of the scraping process.")
         self.update_vector_store(documents)
-        logger.info("Scraping and vector store update complete.")
+
+    def setup_conversation_chain(self):
+        """Set up the conversation chain for querying the LLM."""
+        logger.info("Setting up conversation chain")
+        try:
+            if not self.retriever:
+                logger.error("Retriever is not initialized, can't set up conversation chain.")
+                return
+
+            # Define the prompts for the system and human messages
+            system_message_prompt = SystemMessagePromptTemplate(
+                content="You are a helpful assistant for fashion-related queries."
+            )
+            human_message_prompt = HumanMessagePromptTemplate.from_template("{input}")
+            chat_prompt_template = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
+
+            # Set up the conversational retrieval chain
+            self.conversation = ConversationalRetrievalChain(
+                retriever=self.retriever,
+                memory=self.memory,
+                llm=self.get_groq_llm(),
+                prompt_template=chat_prompt_template  # Ensure template is correctly formatted
+            )
+
+            logger.info("Conversation chain set up successfully.")
+        except Exception as e:
+            logger.error(f"Failed to set up conversation chain: {e}")
 
     def update_vector_store(self, documents):
         """Update the vector store with new documents."""
@@ -106,8 +127,8 @@ class FashionBot:
 
                     self.retriever = self.vector_store.as_retriever(k=20)
                     logger.info("Vector store updated successfully.")
-                    
-                    # Set up the conversation chain
+
+                    # After the vector store is ready, set up the conversation chain
                     self.setup_conversation_chain()
 
                     if not self.conversation:
@@ -116,30 +137,8 @@ class FashionBot:
                         logger.info("Conversation chain is now available.")
             except Exception as e:
                 logger.error(f"Failed to update vector store: {e}")
-
-    def setup_conversation_chain(self):
-        """Set up the conversation chain for querying the LLM."""
-        logger.info("Setting up conversation chain")
-        try:
-            if not self.retriever:
-                logger.error("Retriever is not initialized.")
-                return
-
-            system_message_prompt = SystemMessagePromptTemplate(
-                content="You are a helpful assistant for fashion-related queries."
-            )
-            human_message_prompt = HumanMessagePromptTemplate.from_template("{input}")
-            chat_prompt_template = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
-
-            self.conversation = ConversationalRetrievalChain.from_chain_type(
-                retriever=self.retriever,
-                llm=self.get_groq_llm(),
-                prompt_template=chat_prompt_template,
-                memory=self.memory
-            )
-            logger.info("Conversation chain set up successfully.")
-        except Exception as e:
-            logger.error(f"Failed to set up conversation chain: {e}")
+        else:
+            logger.warning("No documents available to update the vector store.")
 
     def get_groq_llm(self):
         """Returns a Groq LLM object for conversation."""
@@ -151,7 +150,7 @@ class FashionBot:
         
         if not self.conversation:
             logger.error("Conversation chain not set up yet.")
-            return "Error: Conversation chain is not available. "
+            return "Error: Conversation chain is not available."
 
         try:
             response = self.conversation.run(query)
@@ -160,26 +159,14 @@ class FashionBot:
             logger.error(f"Error during conversation chain execution: {e}")
             return "Error: Failed to process the query."
         
-    
     def cronjob_for_scraping(self):
+        """Run the scraping process in a separate thread."""
         scraping_thread = threading.Thread(target=self.start_scraping)
         scraping_thread.start()
-    
 
     def start(self):
-        """Start the bot, scrape data, prepare the vector store, and handle queries."""
-        # Use a separate thread for scraping so it doesn't block the main thread.
-        # scraping_thread = threading.Thread(target=self.start_scraping())
-        # scraping_thread.start()
-
-        # Wait for the scraping to complete before accepting queries.
-        # while scraping_thread.is_alive():
-        #     logger.info("Scraping in progress. Please wait...")
-        #     time.sleep(2)
-
-        logger.info("Scraping completed. You can now ask questions.")
-
-        # Now allow user input for queries
+        """Start the bot and handle user queries."""
+        logger.info("Bot is now accepting queries.")
         while True:
             user_query = input("Enter your fashion query: ")
             response = self.answer_query(user_query)
@@ -187,18 +174,11 @@ class FashionBot:
             time.sleep(1)
 
 def run_scheduler(bot):
-        bot = FashionBot()
-        schedule.every(1).hour.do(bot.cronjob_for_scraping)
-
-        while True:
-            schedule.run_pending()
-            time.sleep(1)
-
-def cronjob_for_scraping():
-        bot = FashionBot()
-        scraping_thread = threading.Thread(target=bot.start_scraping())
-        scraping_thread.start()
-
+    """Scheduler to run scraping job every hour."""
+    schedule.every(1).hour.do(bot.cronjob_for_scraping)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 
 if __name__ == "__main__":
     bot = FashionBot()
@@ -210,7 +190,7 @@ if __name__ == "__main__":
     scheduler_thread = threading.Thread(target=run_scheduler, args=(bot,), daemon=True)
     scheduler_thread.start()
 
-    # Run the bot's start method in the main thread (since it takes input)
+    # Run the bot's start method in the main thread (for user input)
     try:
         bot.start()
     except KeyboardInterrupt:

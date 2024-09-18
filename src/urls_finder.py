@@ -2,8 +2,6 @@ import logging
 import re
 import time
 from selenium.common.exceptions import StaleElementReferenceException
-import threading
-from urllib.parse import urlparse
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -11,18 +9,24 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from urllib.parse import urlparse
+from sentence_transformers import SentenceTransformer
+import chromadb
+from chromadb.config import Settings
+from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 import os
+from langchain.schema import Document
+
 
 class URLFinder:
     def __init__(self):
+        self.vector_db = chromadb.Client()
         # Configure logging with DEBUG level for more details
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
         # Configure headless browser (removed headless mode for debugging)
         self.options = Options()
-        # Comment out headless mode for easier debugging (optional: re-enable once working)
-        # self.options.add_argument("--headless")
         self.options.add_argument("--disable-gpu")
         self.options.add_argument("--no-sandbox")
         self.options.add_argument("--disable-dev-shm-usage")
@@ -41,6 +45,13 @@ class URLFinder:
         self.seen_urls = set()
         self.scraped_urls = self.read_existing_urls("scraped_urls.txt")
         self.url_pattern = re.compile(r'https?://[^\s<>"]+|www\.[^\s<>"]+')
+
+        # Initialize the embedding model and vector DB
+        
+        self.vector_db = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet"))
+
+        # Create a ChromaDB collection for storing product data
+        self.collection = self.vector_db.create_collection("products")
 
     def load_search_engines_from_file(self, file_path):
         """Loads search engines from a file."""
@@ -119,30 +130,23 @@ class URLFinder:
 
                 for product_url in product_urls:
                     try:
-                        # Retry logic in case of StaleElementReferenceException
-                        retry_count = 3
-                        while retry_count > 0:
-                            try:
-                                driver.get(product_url)
-                                WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+                        driver.get(product_url)
+                        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
-                                # Step 2: Find product details
-                                product_name = self.find_product_detail(driver, ["h1", "h2", "title"], ["product", "name", "title"])
-                                product_price = self.find_product_detail(driver, ["span", "div"], ["price", "amount", "money"])
-                                product_description = self.find_product_detail(driver, ["p", "div"], ["description", "details"])
-                                product_image = self.find_product_image(driver)  # Added image scraping
+                        # Step 2: Find product details
+                        product_name = self.find_product_detail(driver, ["h1", "h2", "title"], ["product", "name", "title"])
+                        product_price = self.find_product_detail(driver, ["span", "div"], ["price", "amount", "money"])
+                        product_description = self.find_product_detail(driver, ["p", "div"], ["description", "details"])
+                        product_image = self.find_product_image(driver)  # Added image scraping
 
-                                logging.info(f"Product Name: {product_name}")
-                                logging.info(f"Product Price: {product_price}")
-                                logging.info(f"Product Description: {product_description}")
-                                logging.info(f"Product Image URL: {product_image}")
-                                break  # Break out of the retry loop if successful
-                            except StaleElementReferenceException as e:
-                                logging.warning(f"Stale element found, retrying... ({3 - retry_count + 1})")
-                                retry_count -= 1
-                                time.sleep(2)  # Wait for 2 seconds before retrying
-                                if retry_count == 0:
-                                    logging.error(f"Failed to scrape product details from {product_url} after retries: {e}")
+                        logging.info(f"Product Name: {product_name}")
+                        logging.info(f"Product Price: {product_price}")
+                        logging.info(f"Product Description: {product_description}")
+                        logging.info(f"Product Image URL: {product_image}")
+
+                        # Step 3: Store product details in ChromaDB with embeddings
+                        self.store_in_vectordb(product_name, product_price, product_description, product_image, product_url)
+
                     except Exception as e:
                         logging.warning(f"Failed to scrape product details from {product_url}: {e}")
         except Exception as e:
@@ -163,7 +167,6 @@ class URLFinder:
 
         return "Product image not found"
 
-
     def find_product_detail(self, driver, tags, keywords):
         """Finds product details like name, price, and description based on tags and keywords"""
         for tag in tags:
@@ -178,26 +181,41 @@ class URLFinder:
                         return element.text
         return "Not Found"
 
-    def start_scraping(self):
-        """Starts the scraping process"""
-        existing_urls = self.read_existing_urls("urls.txt")
-        for url in existing_urls:
-            if url not in self.scraped_urls:
-                self.scrape_webpage(url)
-                self.scraped_urls.add(url)
-                with open("scraped_urls.txt", "a") as file:
-                    file.write(f"{url}\n")
-        logging.info("Scraping complete.")
+    def store_in_vectordb(self, product_name, product_price, product_description, product_image, product_url):
+        """Stores product data in ChromaDB with vector embeddings"""
+        embeddings = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+        product_info = f"Name: {product_name}, Price: {product_price}, Description: {product_description}, Image: {product_image}"
 
-    def start_search(self):
-        """Continuously runs the search operation at regular intervals"""
-        # while True:
-        self.search_pakistani_women_clothing_brands()
-        self.start_scraping()
-        logging.info("test----------------------------------------------")
-        # time.sleep(3600)  # Run the search and scrape every hour
+        # Generate embeddings for product info
+        # embeddings = self.embedding_model.encode(product_info)
+        doc = Document(
+        page_content=product_info,
+        metadata={"product_name": product_name, "price": product_price, "Description": product_description, "image_url":product_image })
+
+        vector_db = chromadb.Client()
+
+        vector_db.from_documents(
+            doc, embeddings
+            
+        )
+
+        # Add product data to ChromaDB collection
+        # self.collection.add(
+        #     documents=[product_info],
+        #     embeddings=[embeddings],
+        #     metadatas=[{"url": product_url, "image_url": product_image}]
+        # )
+
+        logging.info(f"Stored product data in ChromaDB: {product_info}")
+
+    def run(self):
+        """Main function to perform web scraping and save the data"""
+        logging.info("Starting scraping operation.")
+        for url in self.scraped_urls:
+            self.scrape_webpage(url)
+        logging.info("Scraping operation completed.")
 
 
 if __name__ == "__main__":
-    url_finder = URLFinder()
-    url_finder.start_search()
+    finder = URLFinder()
+    finder.run()
