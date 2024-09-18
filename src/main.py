@@ -64,6 +64,8 @@ class FashionBot:
         """Starts scraping using URLFinder and stores data in the vector store."""
         logger.info("Starting URL scraping using URLFinder...")
 
+        documents=""
+
         try:
             start_time = time.time()
             documents = self.url_finder.start_search()

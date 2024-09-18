@@ -11,7 +11,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from langchain_ollama import OllamaEmbeddings
 from urllib.parse import urlparse
-from sentence_transformers import SentenceTransformer
+# from sentence_transformers import SentenceTransformer
 import chromadb
 from chromadb.config import Settings
 from chromadb.utils import embedding_functions
@@ -49,10 +49,10 @@ class URLFinder:
 
         # Initialize the embedding model and vector DB
         
-        self.vector_db = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet"))
+        # self.vector_db = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet"))
 
         # Create a ChromaDB collection for storing product data
-        self.collection = self.vector_db.create_collection("products")
+        # self.collection = self.vector_db.create_collection("products")
 
     def load_search_engines_from_file(self, file_path):
         """Loads search engines from a file."""
@@ -185,16 +185,17 @@ class URLFinder:
     def store_in_vectordb(self, product_name, product_price, product_description, product_image, product_url):
         """Stores product data in ChromaDB with vector embeddings"""
         embeddings = OllamaEmbeddings(
-            base_url=os.getenv("OLLAMA_URL"),
-            model="mxbai-embed-large"
+            # base_url=os.getenv("OLLAMA_URL"),
+            model="all-minilm"
         )
         product_info = f"Name: {product_name}, Price: {product_price}, Description: {product_description}, Image: {product_image}"
-
+        doc = []
         # Generate embeddings for product info
         # embeddings = self.embedding_model.encode(product_info)
-        doc = Document(
+        doc.append(Document(
         page_content=product_info,
-        metadata={"product_name": product_name, "price": product_price, "Description": product_description, "image_url":product_image })
+        metadata={"product_name": product_name, "price": product_price, "Description": product_description, "image_url":product_image }))
+        print(doc)
 
         vector_db = chromadb.Client()
 
