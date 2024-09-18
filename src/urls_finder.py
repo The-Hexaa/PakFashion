@@ -9,6 +9,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from langchain_ollama import OllamaEmbeddings
 from urllib.parse import urlparse
 from sentence_transformers import SentenceTransformer
 import chromadb
@@ -183,7 +184,10 @@ class URLFinder:
 
     def store_in_vectordb(self, product_name, product_price, product_description, product_image, product_url):
         """Stores product data in ChromaDB with vector embeddings"""
-        embeddings = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+        embeddings = OllamaEmbeddings(
+            base_url=os.getenv("OLLAMA_URL"),
+            model="mxbai-embed-large"
+        )
         product_info = f"Name: {product_name}, Price: {product_price}, Description: {product_description}, Image: {product_image}"
 
         # Generate embeddings for product info
