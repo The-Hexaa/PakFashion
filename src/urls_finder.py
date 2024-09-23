@@ -156,7 +156,11 @@ class URLFinder:
 
                                 # Step 4: Add data to ChromaDB collection
                                 if description_embedding:
+                                    # Generate a unique ID (using product URL)
+                                    product_id = product_url.split("/")[-1]  # Assuming the last part of the URL is unique
+
                                     self.collection.add(
+                                        ids=[product_id],  # Use the product ID as the unique identifier
                                         embeddings=[description_embedding],  # Embedding for the product description
                                         metadatas=[{
                                             "url": product_url,
@@ -191,46 +195,36 @@ class URLFinder:
             alt_text = image.get_attribute("alt") or ""
             class_attr = image.get_attribute("class") or ""
 
-            # Check if it's a product image by checking its attributes
-            if "product" in alt_text.lower() or "product" in class_attr.lower():
-                return src
+            if any(keyword in alt_text.lower() for keyword in ["logo", "banner", "footer"]) or any(keyword in class_attr.lower() for keyword in ["logo", "banner", "footer"]):
+                continue  # Skip images that are likely logos or banners
+            return src if src else "Image not found"
+        return "Image not found"
 
-        return "Product image not found"
-
-    def find_product_detail(self, driver, tags, keywords):
-        """Finds product details like name, price, and description based on tags and keywords."""
-        for tag in tags:
+    def find_product_detail(self, driver, tag_list, keyword_list):
+        """Finds product details based on tags, classes, and keywords."""
+        for tag in tag_list:
             elements = driver.find_elements(By.TAG_NAME, tag)
             for element in elements:
                 text = element.text.lower()
-                if any(keyword in text for keyword in keywords):
+                if any(keyword in text for keyword in keyword_list):
                     return element.text
+                # Try searching in attributes like 'aria-label' or 'title'
+                aria_label = element.get_attribute('aria-label')
+                if aria_label and any(keyword in aria_label.lower() for keyword in keyword_list):
+                    return aria_label
         return "Detail not found"
 
-    def start_scraping(self):
-        """Starts the scraping process."""
-        existing_urls = self.read_existing_urls("urls.txt")
-        for url in existing_urls:
+    def run(self):
+        self.search_pakistani_women_clothing_brands()
+
+        # Step 5: Scrape individual websites and add data to ChromaDB
+        for url in self.seen_urls:
             if url not in self.scraped_urls:
                 self.scrape_webpage(url)
-                self.scraped_urls.add(url)
                 with open("scraped_urls.txt", "a") as file:
                     file.write(f"{url}\n")
-                    self.logger.info(f"Scraped and saved URL: {url}")
-        self.logger.info("Scraping complete.")
 
-    def start_search(self):
-        """Continuously runs the search operation at regular intervals."""
-        while True:
-            self.search_pakistani_women_clothing_brands()
-            self.start_scraping()
-            time.sleep(3600)  # Run the search and scrape every hour
 
-# Main execution
 if __name__ == "__main__":
-    url_finder = URLFinder()
-    # Start scraping once
-    url_finder.search_pakistani_women_clothing_brands()
-    url_finder.start_scraping()
-    # To run continuously, uncomment the following line
-    # url_finder.start_search()
+    finder = URLFinder()
+    finder.run()
