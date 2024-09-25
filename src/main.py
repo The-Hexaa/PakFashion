@@ -79,17 +79,17 @@ class RAGWithGroq:
             return "No relevant data found in the database."
         
         # Extract context from retrieved data
-        context = " ".join([doc.get("description", "No description available") for doc in retrieved_data['metadatas']])
-        self.logger.info(f"Retrieved context: {context}")
+        # context = " ".join([doc.get("description", "No description available") for doc in retrieved_data['metadatas']])
+        # self.logger.info(f"Retrieved context: {context}")
 
         # Step 3: Send the context and query to Groq for generation
-        response = self.groq_generate(query, context)
+        # self.logger.info(f'Query{} context{}'query, context)
+
+        response = self.groq_generate(query)
         self.logger.info(f"Generated response: {response}")
 
         return response
 
-if __name__ == "__main__":
-    rag_groq = RAGWithGroq()
-    user_query = "Can you recommend Pakistani clothing brands?"
-    response = rag_groq.rag_pipeline(user_query)
-    print(f"Response: {response}")
+def get_fashion_bot():
+    """Function to instantiate and return the RAGWithGroq object."""
+    return RAGWithGroq()

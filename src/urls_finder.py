@@ -12,6 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import load_dotenv
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import chromadb
 from sentence_transformers import SentenceTransformer
 
@@ -23,8 +24,6 @@ class URLFinder:
 
         # Configure headless browser (optional: uncomment headless mode)
         self.options = Options()
-        # Uncomment the next line to run Chrome in headless mode
-        # self.options.add_argument("--headless")
         self.options.add_argument("--disable-gpu")
         self.options.add_argument("--no-sandbox")
         self.options.add_argument("--disable-dev-shm-usage")
@@ -49,7 +48,7 @@ class URLFinder:
         self.collection = self.chroma_client.get_or_create_collection("clothing_brands")
 
         # Initialize SentenceTransformer model for embedding generation
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')  # Choose a suitable embedding model
+        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
     def load_search_engines_from_file(self, file_path):
         """Loads search engines from a file."""
@@ -182,47 +181,36 @@ class URLFinder:
                                 if retry_count == 0:
                                     self.logger.error(f"Failed to scrape product details from {product_url} after retries: {e}")
                     except Exception as e:
-                        self.logger.warning(f"Failed to scrape product details from {product_url}: {e}")
+                        self.logger.error(f"Error occurred while scraping {product_url}: {e}")
         except Exception as e:
-            self.logger.error(f"Failed to scrape content from {url}: {e}")
+            self.logger.error(f"An error occurred during webpage scraping: {e}")
 
-    def find_product_image(self, driver):
-        """Finds product image URL based on img tag and src attribute, ignoring logos and footer images."""
-        images = driver.find_elements(By.TAG_NAME, "img")
-
-        for image in images:
-            src = image.get_attribute("src")
-            alt_text = image.get_attribute("alt") or ""
-            class_attr = image.get_attribute("class") or ""
-
-            if any(keyword in alt_text.lower() for keyword in ["logo", "banner", "footer"]) or any(keyword in class_attr.lower() for keyword in ["logo", "banner", "footer"]):
-                continue  # Skip images that are likely logos or banners
-            return src if src else "Image not found"
-        return "Image not found"
-
-    def find_product_detail(self, driver, tag_list, keyword_list):
-        """Finds product details based on tags, classes, and keywords."""
-        for tag in tag_list:
+    def find_product_detail(self, driver, tag_names, keywords):
+        """Tries to extract a product detail based on tag names and keywords."""
+        for tag in tag_names:
             elements = driver.find_elements(By.TAG_NAME, tag)
             for element in elements:
                 text = element.text.lower()
-                if any(keyword in text for keyword in keyword_list):
+                if any(keyword in text for keyword in keywords):
                     return element.text
-                # Try searching in attributes like 'aria-label' or 'title'
-                aria_label = element.get_attribute('aria-label')
-                if aria_label and any(keyword in aria_label.lower() for keyword in keyword_list):
-                    return aria_label
         return "Detail not found"
+
+    def find_product_image(self, driver):
+        """Attempts to find and return a product image URL."""
+        img_elements = driver.find_elements(By.TAG_NAME, "img")
+        for img in img_elements:
+            src = img.get_attribute("src")
+            if src and ("product" in src or "image" in src):  # Assuming product image URLs contain "product" or "image"
+                return src
+        return "Image not found"
 
     def run(self):
         self.search_pakistani_women_clothing_brands()
 
-        # Step 5: Scrape individual websites and add data to ChromaDB
-        for url in self.seen_urls:
-            if url not in self.scraped_urls:
-                self.scrape_webpage(url)
-                with open("scraped_urls.txt", "a") as file:
-                    file.write(f"{url}\n")
+        # Read saved URLs and scrape products
+        with open("urls.txt", "r") as file:
+            for url in file.readlines():
+                self.scrape_webpage(url.strip())
 
 
 if __name__ == "__main__":
