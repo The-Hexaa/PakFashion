@@ -24,6 +24,7 @@ class URLFinder:
 
         # Configure headless browser (optional: uncomment headless mode)
         self.options = Options()
+        self.options.add_argument("--headless")
         self.options.add_argument("--disable-gpu")
         self.options.add_argument("--no-sandbox")
         self.options.add_argument("--disable-dev-shm-usage")
@@ -114,7 +115,7 @@ class URLFinder:
             self.logger.error(f"An error occurred during URL search: {e}")
         self.logger.info("Search complete. URLs saved to urls.txt.")
 
-    def scrape_webpage(self, url):
+    def scrape_webpage(self, url, start_time):
         """Scrapes product details and images from a website."""
         try:
             self.logger.info(f"Scraping content from: {url}")
@@ -128,7 +129,16 @@ class URLFinder:
                 self.logger.debug(f"Found {len(product_urls)} product URLs on {url}")
 
                 for product_url in product_urls:
+                    # Check if 2 minutes have passed for the entire scraping session
+                    if time.time() - start_time >= 120:
+                        self.logger.info("Global time limit reached. Stopping scraping.")
+                        return  # Exit scraping early if time limit is exceeded
+                    
                     try:
+                        if self.is_product_already_stored(product_url):
+                            self.logger.info(f"Product already exists in ChromaDB, skipping: {product_url}")
+                            continue  # Skip to the next product if already stored
+
                         # Retry logic in case of StaleElementReferenceException
                         retry_count = 3
                         while retry_count > 0:
@@ -136,31 +146,27 @@ class URLFinder:
                                 driver.get(product_url)
                                 WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
-                                # Step 2: Find product details
                                 product_name = self.find_product_detail(driver, ["h1", "h2", "title"], ["product", "name", "title"])
                                 product_price = self.find_product_detail(driver, ["span", "div"], ["price", "amount", "money"])
                                 product_description = self.find_product_detail(driver, ["p", "div"], ["description", "details"])
-                                product_image = self.find_product_image(driver)  # Added image scraping
+                                product_image = self.find_product_image(driver)
 
                                 self.logger.info(f"Product Name: {product_name}")
                                 self.logger.info(f"Product Price: {product_price}")
                                 self.logger.info(f"Product Description: {product_description}")
                                 self.logger.info(f"Product Image URL: {product_image}")
 
-                                # Step 3: Convert description to embedding
                                 if product_description != "Detail not found":
                                     description_embedding = self.embedding_model.encode(product_description).tolist()
                                 else:
                                     description_embedding = []
 
-                                # Step 4: Add data to ChromaDB collection
                                 if description_embedding:
-                                    # Generate a unique ID (using product URL)
-                                    product_id = product_url.split("/")[-1]  # Assuming the last part of the URL is unique
+                                    product_id = product_url.split("/")[-1]
 
                                     self.collection.add(
-                                        ids=[product_id],  # Use the product ID as the unique identifier
-                                        embeddings=[description_embedding],  # Embedding for the product description
+                                        ids=[product_id],
+                                        embeddings=[description_embedding],
                                         metadatas=[{
                                             "url": product_url,
                                             "name": product_name,
@@ -169,21 +175,37 @@ class URLFinder:
                                             "image": product_image
                                         }]
                                     )
-                                    self.logger.info(f"Successfully added product details to ChromaDB: {product_name}")
+                                    self.logger.info(f"Successfully added product to ChromaDB: {product_name}")
                                 else:
                                     self.logger.warning(f"No embedding generated for {product_url}, skipping storage.")
 
-                                break  # Break out of the retry loop if successful
+                                break  # Successful scrape, break retry loop
                             except StaleElementReferenceException as e:
                                 self.logger.warning(f"Stale element found, retrying... ({3 - retry_count + 1})")
                                 retry_count -= 1
-                                time.sleep(2)  # Wait for 2 seconds before retrying
+                                time.sleep(1)
                                 if retry_count == 0:
-                                    self.logger.error(f"Failed to scrape product details from {product_url} after retries: {e}")
+                                    self.logger.error(f"Failed to retrieve product details after retries: {product_url}")
+                                    continue
                     except Exception as e:
-                        self.logger.error(f"Error occurred while scraping {product_url}: {e}")
+                        self.logger.error(f"Error while scraping product URL {product_url}: {e}")
+
         except Exception as e:
-            self.logger.error(f"An error occurred during webpage scraping: {e}")
+            self.logger.error(f"An error occurred while scraping the webpage: {e}")
+
+    def is_product_already_stored(self, product_url):
+        """Check if the product with the given URL or ID already exists in the ChromaDB collection."""
+        try:
+            # Use the product URL or a derived product ID as a unique identifier
+            product_id = product_url.split("/")[-1]  # Assuming the last part of the URL is unique
+
+            # Query ChromaDB to check if this product ID already exists
+            existing_product = self.collection.get(ids=[product_id])
+            if existing_product['ids']:
+                return True  # Product already exists
+        except Exception as e:
+            self.logger.warning(f"Failed to check if product already exists: {e}")
+        return False
 
     def find_product_detail(self, driver, tag_names, keywords):
         """Tries to extract a product detail based on tag names and keywords."""
@@ -198,19 +220,44 @@ class URLFinder:
     def find_product_image(self, driver):
         """Attempts to find and return a product image URL."""
         img_elements = driver.find_elements(By.TAG_NAME, "img")
+
         for img in img_elements:
             src = img.get_attribute("src")
-            if src and ("product" in src or "image" in src):  # Assuming product image URLs contain "product" or "image"
+            alt_text = img.get_attribute("alt")  # Fetch the alt attribute to check for relevant keywords
+            
+            # Assuming product image URLs contain "product" or "item" and the alt attribute contains descriptive keywords
+            if src and ("product" in src or "item" in src or "clothing" in src or "dress" in src):
                 return src
-        return "Image not found"
+            if alt_text and ("product" in alt_text or "item" in alt_text or "clothing" in alt_text or "dress" in alt_text):
+                return src
+        
+        return "Product image not found"
+    
+    def fetch_chromadb_documents(self):
+        """Fetch and print all stored documents from ChromaDB."""
+        try:
+            documents = self.collection.get()
+            print(documents)
+        except Exception as e:
+            self.logger.error(f"Error fetching documents from ChromaDB: {e}")
+
 
     def run(self):
         self.search_pakistani_women_clothing_brands()
 
+        start_time = time.time()  
+
         # Read saved URLs and scrape products
         with open("urls.txt", "r") as file:
             for url in file.readlines():
-                self.scrape_webpage(url.strip())
+                # Stop scraping if the time limit is reached
+                if time.time() - start_time >= 120:
+                    self.logger.info("Global time limit reached. Stopping scraping.")
+                    break
+                
+                self.scrape_webpage(url.strip(), start_time)
+
+        self.fetch_chromadb_documents()
 
 
 if __name__ == "__main__":

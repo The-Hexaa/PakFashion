@@ -34,7 +34,7 @@ class RAGWithGroq:
             n_results=5  # Adjust number of results as needed
         )
         # Check if results contain any data
-        if not results or not results['documents'][0]:
+        if not results or not results.get('documents'):
             self.logger.error("No relevant documents found in ChromaDB.")
             return None
         
@@ -43,52 +43,51 @@ class RAGWithGroq:
 
     def groq_generate(self, query, context):
         """Generates a response using Groq API based on the query and retrieved context."""
-        url = "https://api.groq.com/v1/complete"  # Verify this URL
+        url = "https://api.groq.com/v1/complete"  # Ensure this is the correct Groq API URL
         headers = {
             "Authorization": f"Bearer {self.groq_api_key}",
             "Content-Type": "application/json"
         }
+        
+        # Creating the prompt by combining the user's query with the retrieved context from ChromaDB
+        prompt = f"Query: {query}\n\nContext:\n{context}\n\nGenerate a detailed response based on the query and the context."
+
         payload = {
-            "prompt": f"{context}\n\nUser query: {query}\n",
-            "max_tokens": 150
+            "prompt": prompt,
+            "max_tokens": 300,  # Adjust the token count based on your response length requirement
+            "temperature": 0.7,  # Adjust this to control randomness in generation
         }
 
         try:
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()  # Raise an error for bad responses
-            return response.json().get('text')
-        except requests.exceptions.HTTPError as http_err:
-            self.logger.error(f"HTTP error occurred: {http_err}")
-            return "Failed to generate a response from Groq due to an HTTP error."
-        except Exception as err:
-            self.logger.error(f"An error occurred: {err}")
-            return "An unexpected error occurred while generating a response."
+            # Make a POST request to the Groq API with the prompt
+            response = requests.post(url, json=payload, headers=headers)
+            response.raise_for_status()  # Raise exception for HTTP errors
+            data = response.json()
 
-    def rag_pipeline(self, query):
-        """RAG pipeline: retrieve documents from ChromaDB and generate a response using Groq."""
-        self.logger.info(f"Processing query: {query}")
+            # Return the generated response from Groq
+            generated_response = data.get("choices", [{}])[0].get("text", "No response generated")
+            self.logger.info(f"Generated response from Groq: {generated_response}")
+            return generated_response
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error occurred during Groq API request: {e}")
+            return "An error occurred while generating a response."
 
-        # Step 1: Generate embedding for the query
-        query_embedding = self.generate_query_embedding(query)
 
-        # Step 2: Retrieve relevant data from ChromaDB
-        retrieved_data = self.retrieve_from_chroma(query_embedding)
-        
-        if retrieved_data is None:
-            self.logger.info("No relevant data found. Unable to generate response.")
-            return "No relevant data found in the database."
-        
-        # Extract context from retrieved data
-        # context = " ".join([doc.get("description", "No description available") for doc in retrieved_data['metadatas']])
-        # self.logger.info(f"Retrieved context: {context}")
 
-        # Step 3: Send the context and query to Groq for generation
-        # self.logger.info(f'Query{} context{}'query, context)
+    def rag_pipeline(self, user_input):
+        # Assuming you have a method to get embeddings from user input
+        user_embedding = self.embedding_model.encode(user_input).tolist()
 
-        response = self.groq_generate(query)
-        self.logger.info(f"Generated response: {response}")
+        # Fetch relevant documents based on the user input
+        retrieved_data = self.collection.query(query_embeddings=[user_embedding], n_results=5)
 
-        return response
+        # Log the retrieved data for debugging
+        self.logger.debug(f"Retrieved data: {retrieved_data}")
+
+        # Use a safe method to extract descriptions
+        context = " ".join(
+            [doc.get("description", "No description available") for doc in retrieved_data['metadatas'] if doc]
+        )
 
 def get_fashion_bot():
     """Function to instantiate and return the RAGWithGroq object."""
