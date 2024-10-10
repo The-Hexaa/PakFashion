@@ -15,7 +15,7 @@ jobs:
 
       - name: Configure Docker Daemon for Insecure Registry
         run: |
-          echo '{"insecure-registries" : ["192.168.2.30:6000"]}' | sudo tee /etc/docker/daemon.json
+          echo '{"insecure-registries" : ["116.58.60.115:6000"]}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
 
       - name: Build and push Docker image to registry
@@ -24,8 +24,8 @@ jobs:
           context: .
           push: true
           tags: |
-            192.168.2.30:6000/pakfashion-pak-fashion:${{ github.sha }}
-            192.168.2.30:6000/pakfashion-pak-fashion:latest
+            116.58.60.115:6000/pakfashion-pak-fashion:${{ github.sha }}
+            116.58.60.115:6000/pakfashion-pak-fashion:latest
 
       - name: SSH to remote server and deploy
         uses: appleboy/ssh-action@v0.1.6
