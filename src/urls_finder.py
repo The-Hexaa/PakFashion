@@ -31,8 +31,11 @@ class URLFinder:
         logging.getLogger('asyncio').setLevel(logging.CRITICAL)
 
     def find_urls(self, search_query, max_results=10):
-        service = Service('path/to/chromedriver')
-        driver = webdriver.Chrome(service=service, options=self.options)
+        service = Service("/usr/local/bin/chromedriver")
+        options = webdriver.ChromeOptions()
+        options.add_argument("--headless")  # Run in headless mode
+
+        driver = webdriver.Chrome(service=service, options=options)
         urls = []
         try:
             driver.get("https://www.google.com")
@@ -52,7 +55,6 @@ class URLFinder:
                         urls.append(href)
 
         except Exception as e:
-            logging.error(f"An error occurred during search: {e}")
+            logging.error(f"An error occurred while finding URLs: {e}")
         finally:
-            driver.quit()
-        return urls
+            driver.quit()  # Ensure the driver is closed properly

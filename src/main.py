@@ -96,6 +96,11 @@ class FashionBot:
 
     def prepare_vector_store(self):
         logger.info("Preparing vector store")
+        # embeddings = OllamaEmbeddings(
+        #     base_url=os.getenv("OLLAMA_URL"),
+        #     model="mxbai-embed-large"
+        # )
+
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
             model_kwargs={'device': 'cpu'},
@@ -133,7 +138,9 @@ class FashionBot:
 
         general_user_template = """
         The user is asking:
-        Question: ```{question}```
+        Question: 
+{question}
+
         If there are any images related to this question, include their URLs in the response.
         """
 
@@ -162,7 +169,7 @@ class FashionBot:
             logger.warning("Vector store not available, unable to respond")
             return "Data is not yet available. Please wait a moment and try again."
         
-        self.first_fetch = False  # Reset first_fetch flag after successful data load
+        self.first_fetch = False
         
         if not self.vector_store:
             logger.warning("Vector store not available, unable to respond")
@@ -175,7 +182,7 @@ class FashionBot:
             # Iterate over each URL in urls.txt and generate search URLs
             urls = self.get_urls()
             for url in urls:
-                search_url = f"{url}?q={question.replace(' ', '+')}"
+                search_url = f"{url}/search?q={question.replace(' ', '+')}"
                 search_results.append(f"Check out products at: {search_url}")
 
             # Return formatted response with URLs

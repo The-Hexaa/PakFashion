@@ -27,7 +27,8 @@ logger.info("FashionBot instance created")
 
 def start_url_finder():
     url_finder = URLFinder()
-    url_finder.start_search()
+    search_query = "Pakistani women fashion brands"  # or any appropriate search term
+    url_finder.find_urls(search_query)
     logger.info("URL Finder started")
 
 def initialize_url_finder():
