@@ -24,8 +24,8 @@ jobs:
           context: .
           push: true
           tags: |
-            192.168.2.30:6000/my-streamlit-app:${{ github.sha }}
-            192.168.2.30:6000/my-streamlit-app:latest
+            192.168.2.30:6000/pakfashion-pak-fashion:${{ github.sha }}
+            192.168.2.30:6000/pakfashion-pak-fashion:latest
 
       - name: SSH to remote server and deploy
         uses: appleboy/ssh-action@v0.1.6
