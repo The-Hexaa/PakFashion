@@ -1,0 +1,39 @@
+name: PakFashion CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure Docker Daemon for Insecure Registry
+        run: |
+          echo '{"insecure-registries" : ["192.168.2.30:6000"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+
+      - name: Build and push Docker image to registry
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            192.168.2.30:6000/my-streamlit-app:${{ github.sha }}
+            192.168.2.30:6000/my-streamlit-app:latest
+
+      - name: SSH to remote server and deploy
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            docker-compose down
+            docker-compose pull
+            docker-compose up -d

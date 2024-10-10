@@ -1,94 +1,215 @@
-import logging
 import os
 import requests
+import asyncio
+import aiohttp
+from bs4 import BeautifulSoup
+from langchain_ollama import OllamaEmbeddings
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import Chroma
+from langchain.schema import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains import ConversationalRetrievalChain
+from langchain_groq import ChatGroq
+from langchain.memory import ConversationBufferMemory
+from langchain.prompts import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+)
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
-from urls_finder import URLFinder  # Import URLFinder
+import threading
+import time
+import logging
 
-class RAGWithGroq:
+# Configure logging
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    filename='fashion_bot.log',
+                    filemode='w')
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+logging.getLogger('').addHandler(console_handler)
+
+logger = logging.getLogger(__name__)
+
+load_dotenv()
+
+API_KEY = os.getenv("GROQ_API_KEY")
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+class FashionBot:
     def __init__(self):
-        # Initialize logging
-        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-        self.logger = logging.getLogger(__name__)
+        self.documents = []
+        self.vector_store = None
+        self.llm = ChatGroq(temperature=0, groq_api_key=API_KEY, model_name="llama3-70b-8192")
+        self.retriever = None
+        self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        self.conversation = None
+        self.data_fetching = False
+        self.first_fetch = True
+        self.fetch_interval = 3600  # 1 hour in seconds
+        logger.info("FashionBot initialized")
 
-        # Load environment variables
-        load_dotenv()
-        self.groq_api_key = os.getenv("GROQ_API_KEY")
-        self.search_query = os.getenv("SEARCH_QUERY", "Pakistani women clothing brands")
+    def get_urls(self):
+        logger.info("Reading URLs from file")
+        with open('urls.txt', 'r') as file:
+            urls = file.read().splitlines()
+        return urls
 
-        # Use URLFinder to access the ChromaDB client and collection
-        url_finder = URLFinder()
-        self.collection = url_finder.collection  # Access the collection directly
+    async def scrape_data_from_urls(self, urls):
+        self.data_fetching = True
+        logger.info("Starting data scraping")
+        async with aiohttp.ClientSession() as session:
+            tasks = [self.fetch_content(session, url) for url in urls]
+            await asyncio.gather(*tasks)
+        self.prepare_vector_store()
+        self.data_fetching = False
+        self.first_fetch = False
+        logger.info("Data scraping completed")
 
-        # Initialize embedding model
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')  # Choose a suitable model
-
-    def generate_query_embedding(self, query):
-        """Generates embedding for the given query using SentenceTransformer."""
-        return self.embedding_model.encode(query).tolist()
-
-    def retrieve_from_chroma(self, query_embedding):
-        """Retrieves relevant documents from ChromaDB using the query embedding."""
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=5  # Adjust number of results as needed
-        )
-        # Check if results contain any data
-        if not results or not results.get('documents'):
-            self.logger.error("No relevant documents found in ChromaDB.")
-            return None
-        
-        self.logger.debug(f"Retrieved results from Chroma: {results}")
-        return results
-
-    def groq_generate(self, query, context):
-        """Generates a response using Groq API based on the query and retrieved context."""
-        url = "https://api.groq.com/v1/complete"  # Ensure this is the correct Groq API URL
-        headers = {
-            "Authorization": f"Bearer {self.groq_api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        # Creating the prompt by combining the user's query with the retrieved context from ChromaDB
-        prompt = f"Query: {query}\n\nContext:\n{context}\n\nGenerate a detailed response based on the query and the context."
-
-        payload = {
-            "prompt": prompt,
-            "max_tokens": 300,  # Adjust the token count based on your response length requirement
-            "temperature": 0.7,  # Adjust this to control randomness in generation
-        }
-
+    async def fetch_content(self, session, url):
         try:
-            # Make a POST request to the Groq API with the prompt
-            response = requests.post(url, json=payload, headers=headers)
-            response.raise_for_status()  # Raise exception for HTTP errors
-            data = response.json()
+            async with session.get(url) as response:
+                if response.status == 200:
+                    text = await response.text()
+                    soup = BeautifulSoup(text, 'html.parser')
 
-            # Return the generated response from Groq
-            generated_response = data.get("choices", [{}])[0].get("text", "No response generated")
-            self.logger.info(f"Generated response from Groq: {generated_response}")
-            return generated_response
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error occurred during Groq API request: {e}")
-            return "An error occurred while generating a response."
+                    # Extracting text content
+                    content = soup.get_text(separator=' ', strip=True)
 
+                    # Extracting image URLs
+                    images = [img['src'] for img in soup.find_all('img') if img.get('src')]
+                    image_urls = ", ".join(images)
 
+                    if len(content) > 500:
+                        self.documents.append(Document(page_content=content, metadata={"source": url, "image_urls": image_urls}))
+                        logger.debug(f"Content and images fetched from {url}")
+                    else:
+                        logger.warning(f"Content from {url} is too short to be useful.")
+                else:
+                    logger.error(f"Failed to retrieve content from {url}, status code: {response.status}")
+        except Exception as e:
+            logger.exception(f"An error occurred while fetching {url}: {e}")
 
-    def rag_pipeline(self, user_input):
-        # Assuming you have a method to get embeddings from user input
-        user_embedding = self.embedding_model.encode(user_input).tolist()
+    def prepare_vector_store(self):
+        logger.info("Preparing vector store")
+        # embeddings = OllamaEmbeddings(
+        #     base_url=os.getenv("OLLAMA_URL"),
+        #     model="mxbai-embed-large"
+        # )
 
-        # Fetch relevant documents based on the user input
-        retrieved_data = self.collection.query(query_embeddings=[user_embedding], n_results=5)
-
-        # Log the retrieved data for debugging
-        self.logger.debug(f"Retrieved data: {retrieved_data}")
-
-        # Use a safe method to extract descriptions
-        context = " ".join(
-            [doc.get("description", "No description available") for doc in retrieved_data['metadatas'] if doc]
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': False}
         )
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=128)
+        chunks = text_splitter.split_documents(self.documents)
 
+        for i, chunk in enumerate(chunks[:5]):
+            logger.debug(f"Chunk {i} from {chunk.metadata['source']}:\n{chunk.page_content[:500]}...")
+
+        self.vector_store = Chroma.from_documents(chunks, embeddings)
+        self.retriever = self.vector_store.as_retriever(k=20)
+        self.setup_conversation_chain()
+        self.data_fetching = False
+        logger.info("Vector store prepared")
+
+    def setup_conversation_chain(self):
+        logger.info("Setting up conversation chain")
+
+        general_system_template = """
+        You are a helpful assistant with extensive knowledge about fashion brands and products. Your responses should:
+        1. Provide accurate and relevant information based on the context provided.
+        2. Mention the specific brand for each item when referring to products.
+        3. Ensure clarity and comprehensiveness in your responses.
+        4. Include image URLs where relevant and available.
+
+        Here's some information about the context and user queries:
+        - Chat history: {chat_history}
+        - Context: {context}
+        - User's question: {question}
+
+        Use the context to enhance the response and refer to the brands explicitly. If image URLs are available for the items, include them in the response. Ensure that your answers are relevant and useful.
+        """
+
+        general_user_template = """
+        The user is asking:
+        Question: 
+{question}
+
+        If there are any images related to this question, include their URLs in the response.
+        """
+
+        messages = [
+            SystemMessagePromptTemplate.from_template(general_system_template),
+            HumanMessagePromptTemplate.from_template(general_user_template)
+        ]
+        aqa_prompt = ChatPromptTemplate.from_messages(messages)
+
+        self.conversation = ConversationalRetrievalChain.from_llm(
+            self.llm, retriever=self.retriever, memory=self.memory, combine_docs_chain_kwargs={"prompt": aqa_prompt}, verbose=True
+        )
+        logger.info("Conversation chain set up")
+
+    async def initialize_data(self):
+        logger.info("Initializing data")
+        self.data_fetching = True
+        urls = self.get_urls()
+        await self.scrape_data_from_urls(urls)
+
+    def get_response(self, question, num_results=20):
+        if self.data_fetching:
+            logger.warning("Data fetching in progress, unable to respond")
+            return "Currently fetching data. Please try again in a few moments."
+        elif not self.vector_store:
+            logger.warning("Vector store not available, unable to respond")
+            return "Data is not yet available. Please wait a moment and try again."
+        
+        self.first_fetch = False
+        
+        if not self.vector_store:
+            logger.warning("Vector store not available, unable to respond")
+            return "Data is not yet available. Please try again in a few moments."
+        
+        try:
+            logger.info(f"Generating response for question: {question}")
+            search_results = []
+            
+            # Iterate over each URL in urls.txt and generate search URLs
+            urls = self.get_urls()
+            for url in urls:
+                search_url = f"{url}/search?q={question.replace(' ', '+')}"
+                search_results.append(f"Check out products at: {search_url}")
+
+            # Return formatted response with URLs
+            formatted_response = "\n".join(search_results)
+            logger.info(f"Response generated for question: {question}")
+            return formatted_response
+        except Exception as e:
+            logger.exception(f"An error occurred while generating the response: {e}")
+            return "An error occurred while processing your request. Please try again later."
+
+
+    def start_periodic_scraping(self):
+        def run_scraping():
+            while True:
+                logger.info("Starting periodic scraping")
+                asyncio.run(self.initialize_data())
+                logger.info(f"Sleeping for {self.fetch_interval} seconds before next scrape")
+                time.sleep(self.fetch_interval)
+
+        thread = threading.Thread(target=run_scraping, daemon=True)
+        thread.start()
+        logger.info("Periodic scraping thread started")
+
+# Initialize the bot and start periodic scraping
+fashion_bot = FashionBot()
+fashion_bot.start_periodic_scraping()
+
+# Expose the fashion_bot instance
 def get_fashion_bot():
-    """Function to instantiate and return the RAGWithGroq object."""
-    return RAGWithGroq()
+    return fashion_bot
