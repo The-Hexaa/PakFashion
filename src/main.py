@@ -106,6 +106,7 @@ class FashionBot:
             model_kwargs={'device': 'cpu'},
             encode_kwargs={'normalize_embeddings': False}
         )
+
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=128)
         chunks = text_splitter.split_documents(self.documents)
 
@@ -139,7 +140,7 @@ class FashionBot:
         general_user_template = """
         The user is asking:
         Question: 
-{question}
+        {question}
 
         If there are any images related to this question, include their URLs in the response.
         """
@@ -192,7 +193,6 @@ class FashionBot:
         except Exception as e:
             logger.exception(f"An error occurred while generating the response: {e}")
             return "An error occurred while processing your request. Please try again later."
-
 
     def start_periodic_scraping(self):
         def run_scraping():

@@ -9,3 +9,7 @@ watchdog
 langchain-ollama
 webdriver_manager
 
+sqlalchemy 
+bcrypt
+
+
