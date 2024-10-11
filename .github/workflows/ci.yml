@@ -27,7 +27,7 @@ jobs:
             116.58.60.115:6000/pakfashion-pak-fashion:${{ github.sha }}
             116.58.60.115:6000/pakfashion-pak-fashion:latest
 
-      - name: SSH to remote server & deploy
+      - name: SSH to remote server and deploy
         uses: appleboy/ssh-action@v0.1.6
         with:
           host: ${{ secrets.SSH_HOST }}
