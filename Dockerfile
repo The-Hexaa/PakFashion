@@ -29,6 +29,10 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libx11-xcb1 \
     libxtst6 \
+    fonts-liberation \
+    libappindicator3-1 \
+    libgtk-3-0 \
+    xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Google Chrome
@@ -39,7 +43,6 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add
     && rm -rf /var/lib/apt/lists/*
 
 # Install ChromeDriver
-# Manually set ChromeDriver version compatible with Google Chrome
 ENV CHROMEDRIVER_VERSION=114.0.5735.90
 RUN wget -q "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip" -O /tmp/chromedriver.zip \
     && unzip /tmp/chromedriver.zip -d /usr/local/bin/ \
@@ -56,8 +59,11 @@ COPY . /app
 RUN pip install --upgrade pip \
     && pip install --prefer-binary --timeout=120 -r requirements.txt
 
-# Make port 8501 available to the world outside this container
+# Set environment variable to disable email prompt
+ENV STREAMLIT_DISABLE_EMAIL_PROMPT=true
+
+# Make port 8505 available to the world outside this container
 EXPOSE 8505
 
 # Run Streamlit when the container launches
-CMD ["streamlit", "run", "src/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "src/app.py", "--server.port=8505", "--server.address=0.0.0.0"]

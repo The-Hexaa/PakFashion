@@ -8,5 +8,5 @@ services:
     volumes:
       - .:/app
     environment:
-      - STREAMLIT_SERVER_PORT=8501
-    command: streamlit run src/app.py --server.port=8501 --server.address=0.0.0.0
+      - STREAMLIT_SERVER_PORT=8502
+    command: streamlit run src/app.py --server.port=8505 --server.address=0.0.0.0

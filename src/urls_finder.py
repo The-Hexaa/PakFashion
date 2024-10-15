@@ -13,17 +13,20 @@ from dotenv import load_dotenv
 import os
 
 class URLFinder:
-    def __init__(self):
+    def __init__(self, headless=True):
         # Configure logging
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname=s - %(message=s')
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         # Configure headless browser
         self.options = Options()
-        self.options.add_argument("--headless")
+        if headless:
+            self.options.add_argument("--headless")
         self.options.add_argument("--disable-gpu")
         self.options.add_argument("--no-sandbox")
         self.options.add_argument("--disable-dev-shm-usage")
-        # Disable ChromeDriver logs
-        self.options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        self.options.add_argument("--window-size=1920,1080")
+        self.options.add_argument("--disable-setuid-sandbox")
+        self.options.add_argument("--remote-debugging-port=9222")  # Required for Chrome to start
+
         # Disable Selenium logging
         logging.getLogger('selenium').setLevel(logging.CRITICAL)
         logging.getLogger('urllib3').setLevel(logging.CRITICAL)
@@ -32,10 +35,7 @@ class URLFinder:
 
     def find_urls(self, search_query, max_results=10):
         service = Service("/usr/local/bin/chromedriver")
-        options = webdriver.ChromeOptions()
-        options.add_argument("--headless")  # Run in headless mode
-
-        driver = webdriver.Chrome(service=service, options=options)
+        driver = webdriver.Chrome(service=service, options=self.options)
         urls = []
         try:
             driver.get("https://www.google.com")
