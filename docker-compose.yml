@@ -4,9 +4,9 @@ services:
   pak-fashion:
     build: .
     ports:
-      - "8502:8505"
+      - "8505:8505"
     volumes:
       - .:/app
     environment:
-      - STREAMLIT_SERVER_PORT=8502
+      - STREAMLIT_SERVER_PORT=8505
     command: streamlit run src/app.py --server.port=8505 --server.address=0.0.0.0
